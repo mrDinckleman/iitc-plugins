@@ -2,8 +2,8 @@
 // @id             iitc-plugin-aurora
 // @name           IITC plugin: Aurora Glyph Hack Challenge
 // @category       Misc
-// @version        0.1.0.20190820.185425
-// @description    [2019-08-20-185425] Allow manual entry of portals glyphed during Aurora Glyph Hack Challenge. Use the 'highlighter-aurora' plugin to show the portals on the map, and 'sync' to share between multiple browsers or desktop/mobile.
+// @version        0.1.1.20190821.192931
+// @description    [2019-08-21-192931] Allow manual entry of portals glyphed during Aurora Glyph Hack Challenge. Use the 'highlighter-aurora' plugin to show the portals on the map, and 'sync' to share between multiple browsers or desktop/mobile.
 // @updateURL      https://raw.githubusercontent.com/mrDinckleman/iitc-plugins/master/aurora.user.js
 // @downloadURL    https://raw.githubusercontent.com/mrDinckleman/iitc-plugins/master/aurora.user.js
 // @namespace      https://github.com/mrDinckleman/iitc-plugins
@@ -66,7 +66,7 @@ function wrapper(plugin_info) {
   };
 
   window.plugin.aurora.updateCheckedAndHighlight = function (guid) {
-    if (guid == window.selectedPortal) {
+    if (guid === window.selectedPortal) {
       var glyphInfo = window.plugin.aurora.glyphed[guid];
       var glyphed = (glyphInfo && glyphInfo.glyphed) || 0;
 
@@ -79,13 +79,13 @@ function wrapper(plugin_info) {
 
     if (window.plugin.aurora.isHighlightActive) {
       if (window.portals[guid]) {
-        window.setMarkerStyle(window.portals[guid], guid == window.selectedPortal);
+        window.setMarkerStyle(window.portals[guid], guid === window.selectedPortal);
       }
     }
   };
 
-  window.plugin.aurora.updateGlyphed = function (visited, val, guid) {
-    if (guid == undefined) guid = window.selectedPortal;
+  window.plugin.aurora.updateGlyphed = function (state, seq, guid) {
+    if (typeof guid === 'undefined') guid = window.selectedPortal;
 
     var glyphInfo = window.plugin.aurora.glyphed[guid];
 
@@ -96,12 +96,16 @@ function wrapper(plugin_info) {
     }
 
     // Nothing changed
-    if (visited == !!(glyphInfo.glyphed & glyph[val])) return;
+    if (state === !!(glyphInfo.glyphed & glyph[seq])) return;
 
-    glyphInfo.glyphed = glyphInfo.glyphed + (visited ? 1 : -1) * glyph[val];
+    glyphInfo.glyphed = glyphInfo.glyphed + (state ? 1 : -1) * glyph[seq];
 
     window.plugin.aurora.updateCheckedAndHighlight(guid);
     window.plugin.aurora.sync(guid);
+
+    $('input.glyph_' + seq + '[data-guid="' + guid + '"]').prop('checked', state);
+    window.plugin.aurora.toggleAll(seq);
+    $('#dialog-aurora-dialog').prev().find('.ui-dialog-title').text(window.plugin.aurora.getModalTitle());
   };
 
   // Stores the given GUID for sync
@@ -275,15 +279,24 @@ function wrapper(plugin_info) {
           + 'text-align: center;'
           + 'margin: 6px 3px 1px 3px;'
           + 'padding: 0 4px;}'
-        + '#aurora-container label {'
-          + 'margin: 0 0.5em;}'
-        + '#aurora-container input {'
-          + 'vertical-align: middle;}')
+        + '.aurora-container label {'
+          + 'white-space: nowrap;'
+          + 'margin: 0 0.3em;}'
+        + '.aurora-container input {'
+          + 'vertical-align: middle;}'
+        + '#aurora-portals {'
+          + 'border-collapse: collapse;'
+          + 'empty-cells: show;'
+          + 'width: 100%;}'
+        + '#aurora-portals th, #aurora-portals td {'
+          + 'padding: 3px; color: white;'
+          + ' background-color: #1b415e;'
+          + ' border-bottom: 1px solid #0b314e;}')
       .appendTo('head');
   };
 
   window.plugin.aurora.setupContent = function () {
-    window.plugin.aurora.contentHTML = '<div id="aurora-container">Aurora '
+    window.plugin.aurora.contentHTML = '<div class="aurora-container" id="aurora-container">Aurora '
       + '<label><input type="checkbox" id="glyph_1" onclick="window.plugin.aurora.updateGlyphed($(this).prop(\'checked\'), 1)"> 1</label>'
       + '<label><input type="checkbox" id="glyph_2" onclick="window.plugin.aurora.updateGlyphed($(this).prop(\'checked\'), 2)"> 2</label>'
       + '<label><input type="checkbox" id="glyph_3" onclick="window.plugin.aurora.updateGlyphed($(this).prop(\'checked\'), 3)"> 3</label>'
@@ -292,6 +305,146 @@ function wrapper(plugin_info) {
       + '</div>';
 
     window.plugin.aurora.disabledMessage = '<div id="aurora-container" class="help" title="Your browser does not support localStorage">Plugin Aurora disabled</div>';
+
+    $("#toolbox").append('<a onclick="window.plugin.aurora.showList();" title="Show portals for Aurora Glyph Hack Challenge">Aurora portals</a>');
+  };
+
+  window.plugin.aurora.isPortalInPolygon = function (portal, latLngsObjectsArray) {
+    var portalCoords = portal.split(',');
+
+    var x = portalCoords[0];
+    var y = portalCoords[1];
+
+    var inside = false;
+
+    for (var i = 0, j = latLngsObjectsArray.length - 1; i < latLngsObjectsArray.length; j = i++) {
+      var xi = latLngsObjectsArray[i].lat, yi = latLngsObjectsArray[i].lng;
+      var xj = latLngsObjectsArray[j].lat, yj = latLngsObjectsArray[j].lng;
+
+      var intersect = ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+
+    return inside;
+  };
+
+  window.plugin.aurora.getList = function () {
+    var drawLayer = null;
+    var list = [];
+
+    if (localStorage['plugin-draw-tools-layer']) {
+      drawLayer = JSON.parse(localStorage['plugin-draw-tools-layer']);
+    }
+
+    var portals = window.portals;
+
+    portalLoop: for (var i in portals) {
+      if (!portals.hasOwnProperty(i)) continue;
+
+      var p = window.portals[i];
+      var name = p.options.data.title;
+      var guid = p.options.guid;
+      var latlng = p._latlng.lat + ',' + p._latlng.lng;
+
+      if (drawLayer) {
+        for (var dl in drawLayer) {
+          if (drawLayer[dl].type === 'polygon') {
+            if (!window.plugin.aurora.isPortalInPolygon(latlng, drawLayer[dl].latLngs)) continue portalLoop;
+          }
+        }
+      }
+
+      var b = window.map.getBounds();
+      // skip if not currently visible
+      if (p._latlng.lat < b._southWest.lat || p._latlng.lng < b._southWest.lng || p._latlng.lat > b._northEast.lat || p._latlng.lng > b._northEast.lng) continue;
+
+      var lat = latlng.split(',')[0];
+      var lng = latlng.split(',')[1];
+
+      list.push({
+        title: name,
+        guid: guid,
+        latlng: latlng
+      });
+    }
+
+    return list.sort(function (a, b) {
+      if (a.title > b.title) return 1;
+      if (a.title < b.title) return -1;
+      return 0;
+    });
+  };
+
+  window.plugin.aurora.countTotal = function () {
+    var data = window.plugin.aurora.glyphed;
+    var total = 0;
+
+    for (var guid in data) {
+      var glyphed = data[guid].glyphed;
+
+      if (glyphed & glyph[1]) total += 1;
+      if (glyphed & glyph[2]) total += 1;
+      if (glyphed & glyph[3]) total += 1;
+      if (glyphed & glyph[4]) total += 1;
+      if (glyphed & glyph[5]) total += 1;
+    }
+
+    return total;
+  };
+
+  window.plugin.aurora.showList = function () {
+    var portals = window.plugin.aurora.getList();
+
+    var html = '<table class="aurora-container" id="aurora-portals"><thead>';
+    html += '</thead><tbody>';
+    html += '<tr><th>#</th><th>Portal Name</th>'
+      + '<th><label><input type="checkbox" class="glyph_all" value="1"> 1</label></th>'
+      + '<th><label><input type="checkbox" class="glyph_all" value="2"> 2</label></th>'
+      + '<th><label><input type="checkbox" class="glyph_all" value="3"> 3</label></th>'
+      + '<th><label><input type="checkbox" class="glyph_all" value="4"> 4</label></th>'
+      + '<th><label><input type="checkbox" class="glyph_all" value="5"> 5</label></th></tr>';
+
+    for (var i = 0; i < portals.length; i++) {
+      var guid = portals[i].guid;
+      var glyphInfo = window.plugin.aurora.glyphed[guid];
+      var data = glyphInfo ? glyphInfo.glyphed : 0;
+
+      html += '<tr><td>' + (i + 1) + '</td>'
+        + '<td><a href="https://www.ingress.com/intel?ll=' + portals[i].latlng + '&amp;z=17&amp;pll=' + portals[i].latlng + '">' + portals[i].title + '</a></td>'
+        + '<td><label><input type="checkbox" class="glyph_1" data-guid="' + guid + '" onclick="window.plugin.aurora.updateGlyphed($(this).prop(\'checked\'), 1, \'' + guid + '\')"' + (data & glyph[1] ? ' checked' : '') + '> 1</label></td>'
+        + '<td><label><input type="checkbox" class="glyph_2" data-guid="' + guid + '" onclick="window.plugin.aurora.updateGlyphed($(this).prop(\'checked\'), 2, \'' + guid + '\')"' + (data & glyph[2] ? ' checked' : '') + '> 2</label></td>'
+        + '<td><label><input type="checkbox" class="glyph_3" data-guid="' + guid + '" onclick="window.plugin.aurora.updateGlyphed($(this).prop(\'checked\'), 3, \'' + guid + '\')"' + (data & glyph[3] ? ' checked' : '') + '> 3</label></td>'
+        + '<td><label><input type="checkbox" class="glyph_4" data-guid="' + guid + '" onclick="window.plugin.aurora.updateGlyphed($(this).prop(\'checked\'), 4, \'' + guid + '\')"' + (data & glyph[4] ? ' checked' : '') + '> 4</label></td>'
+        + '<td><label><input type="checkbox" class="glyph_5" data-guid="' + guid + '" onclick="window.plugin.aurora.updateGlyphed($(this).prop(\'checked\'), 5, \'' + guid + '\')"' + (data & glyph[5] ? ' checked' : '') + '> 5</label></td></tr>';
+    }
+
+    html += '</tbody></table>';
+
+    var dialog = window.dialog({
+      id: 'aurora-dialog',
+      title: window.plugin.aurora.getModalTitle(),
+      dialogClass: 'ui-dialog-aurora',
+      html: html,
+      width: 500
+    });
+
+    window.plugin.aurora.toggleAll();
+  };
+
+  window.plugin.aurora.toggleAll = function (val) {
+    if (typeof val === 'undefined') {
+      val = [1, 2, 3, 4, 5];
+    } else {
+      val = [val];
+    }
+
+    val.forEach(function (value) {
+      $('input.glyph_all[value="' + value + '"]').prop('checked', $('input.glyph_' + value).length === $('input.glyph_' + value + ':checked').length);
+    });
+  };
+
+  window.plugin.aurora.getModalTitle = function () {
+    return 'Aurora Portals (Total ' + window.plugin.aurora.countTotal() + ' points)';
   };
 
   var setup = function () {
@@ -301,6 +454,15 @@ function wrapper(plugin_info) {
     window.addPortalHighlighter('Aurora', window.plugin.aurora.highlighter);
     window.addHook('portalDetailsUpdated', window.plugin.aurora.onPortalDetailsUpdated);
     window.addHook('iitcLoaded', window.plugin.aurora.registerFieldForSyncing);
+
+    $('body').on('change', '.glyph_all', function () {
+      var val = $(this).val();
+      if ($(this).prop('checked')) {
+        $('.glyph_' + val + ':not(:checked)').trigger('click');
+      } else {
+        $('.glyph_' + val + ':checked').trigger('click');
+      }
+    });
   };
   // PLUGIN END //////////////////////////////////////////////////////////
 
