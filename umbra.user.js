@@ -244,7 +244,7 @@ function wrapper(plugin_info) {
           style.fillOpacity = 0.8;
           break;
         case 8:
-          // glyphed all - no highlights
+          // fully deployed - no highlights
           break;
       }
 
