@@ -2,8 +2,8 @@
 // @id             iitc-plugin-umbra
 // @name           IITC plugin: Umbra Deploy Challenge
 // @category       Misc
-// @version        0.1.1.20191223.204405
-// @description    [2019-12-23-204405] Allow manual entry of portals deployed during Umbra Deploy Challenge. Use the 'highlighter-umbra' plugin to show the portals on the map, and 'sync' to share between multiple browsers or desktop/mobile.
+// @version        0.1.1.20191224.211839
+// @description    [2019-12-24-211839] Allow manual entry of portals deployed during Umbra Deploy Challenge. Use the 'highlighter-umbra' plugin to show the portals on the map, and 'sync' to share between multiple browsers or desktop/mobile.
 // @updateURL      https://raw.githubusercontent.com/mrDinckleman/iitc-plugins/master/umbra.user.js
 // @downloadURL    https://raw.githubusercontent.com/mrDinckleman/iitc-plugins/master/umbra.user.js
 // @namespace      https://github.com/mrDinckleman/iitc-plugins
@@ -244,8 +244,7 @@ function wrapper(plugin_info) {
           style.fillOpacity = 0.8;
           break;
         case 8:
-          style.fillColor = hsl(8); // hsl(120,100%,25%)
-          style.fillOpacity = 1;
+          // glyphed all - no highlights
           break;
       }
 
